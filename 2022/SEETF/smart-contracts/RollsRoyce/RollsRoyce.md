@@ -122,7 +122,9 @@ Based on the source code of the contract itself, we can learn a couple of things
 - If you win a coin flip 3 times consecutively, you can claim claim all the ether you've won plus 1 additional ether through `WithdrawFirstWinPrizeMoneyBonus()`
   - This additional 1 ether bonus only applies on your first win.
 - We solve the problem when we drain all the funds from the contract itself.
-  - We can determine the amount of funds in the contract by running `web3.eth.getBalance(contractAddress)`, which tells us that there's 5 ether in the contract itself when we deploy the contract.
+  - We can determine the amount of funds in the contract by running `web3.eth.getBalance(contractAddress)`, which tells us that there's 5 ether in the contract itself when we deploy the contract
+  ![image](https://user-images.githubusercontent.com/33711159/173046447-fdef0e74-81ea-49c5-b039-bcf2459f3fb4.png)
+
 
 
 ## Exploit 1 - Predictable Block Timestamp
