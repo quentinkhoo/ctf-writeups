@@ -267,8 +267,8 @@ receive() external payable {
 
 Note that we also want to check that we only trigger the vulnerable re-entrancy function if we have already won the game, and we only wish to keep drawing the funds if there are even funds to draw.
 
-## Putting it all together
-Alright, now that we understand what we need to do, let's implement the full contract!
+## Wrapping it all up like a Sushi Roll
+Alright, now that we understand what we need to do, let's implement the full exploit contract!
 
 ```solidity
 contract Attack {
