@@ -141,9 +141,11 @@ While we're at it, we can also check the amount of funds present in the contract
 
 
 Now let's call the `withdrawFunds()` function with the values we have found (of course, from the account which we changed the owner to):
+
 ![image](https://user-images.githubusercontent.com/33711159/173196090-55fa70a1-5e63-4388-b5cf-415a9318ad3d.png)
 
 Great! We have successfully run the `withdrawFunds()` function. We can now see that the contract's balance is indeed 0 and `isSolved()` has been set to true.
+
 ![image](https://user-images.githubusercontent.com/33711159/173196141-8b0336c9-f9ad-4a21-aac0-d444e98e7baf.png)
 
 Let's go grab our flag :)
