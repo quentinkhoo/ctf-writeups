@@ -148,7 +148,7 @@ What is interesting to us is the use of `block.timestamp` over here, which accor
 
 So I guess the question is, how do we exploit this idea? When a transaction is made, it gets stored onto a block and it is this particular block's timestamp that we are interested in. 
 
-In order to exploit this, we first got to call the `guess()` function along with the `revealResults()` function *in the same transaction(, so something like this:
+In order to exploit this, we first got to call the `guess()` function along with the `revealResults()` function *in the same transaction*, so something like this:
 
 ```solidity
 contract Attack {
