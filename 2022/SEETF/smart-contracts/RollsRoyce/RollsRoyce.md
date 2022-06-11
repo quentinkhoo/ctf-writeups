@@ -2,6 +2,8 @@
 
 This was a smart-contract challenge that was part of the recent [SEETF 2022](https://ctftime.org/event/1543/) hosted by the [Social Engineering Experts](https://seetf.sg/seetf/). I played this together under [3_Blind_Mice](https://ctftime.org/team/190705), a random team made together with [@chuayupeng](https://github.com/chuayupeng) and [ethon](https://github.com/gnosis-agora) for pure fun and memes.
 
+Like all the other smart-contract challenges in this CTF, a vulnerable contract was deployed onto [SEETF's very own private blockchain network](https://github.com/Social-Engineering-Experts/ETH-Guide).
+
 Solving this challenge required exploiting 2 vulnerabilities, a pseudorandomness vulnerability that leveraged on `block.timestamp` being used as a random generator, and a [re-entrancy attack](https://hackernoon.com/hack-solidity-reentrancy-attack). 
 
 We are given this `RollsRoyce.sol` contract as shown below:
